@@ -1,231 +1,212 @@
-# 🔍 AI幻觉检测器 | AI Hallucination Detector
+# 🔍 AI Hallucination Detector
 
-**让AI不再胡说八道的验证层**
-*A verification layer that makes AI stop hallucinating*
-
-```
-用户粘贴AI回复 → 提取事实声明 → 搜索验证 → 比对判定 → 输出可信度报告
-Paste AI response → Extract claims → Search verify → Compare judge → Credibility report
-```
-
-## 核心论点 | Core Thesis
-
-**AI幻觉是架构问题，不是规模问题。**
-
-大模型在做的是 `argmax P(most_likely)`，不是 `P(true)`。更多数据只会让"最可能"更精确，但"最可能"永远不等于"最真实"。这是1739年休谟就指出的问题，287年没人在归纳框架内解决。
-
-我们的方案：**用演绎推理替代归纳猜测，让AI输出可验证。**
-
-> *Hallucination is an architecture problem, not a scale problem. LLMs compute argmax P(most_likely), not P(true). We replace inductive guessing with deductive verification.*
-
-## 技术架构 | Architecture
+**Axiom-based claim screening for AI output**
 
 ```
-┌─────────────────────────────────────────────────┐
-│                  用户输入 (AI回复文本)              │
-└──────────────────────┬──────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────┐
-│  Step 1: 断言提取 (extractor.py)                  │
-│  Claude API → 识别可验证的事实声明                  │
-│  过滤观点、建议、假设 → 只保留可证伪的断言           │
-└──────────────────────┬───────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────┐
-│  Step 2: 搜索验证 (searcher.py)                   │
-│  Tavily API → 为每条声明搜索相关信息                │
-│  返回权威来源的摘要和链接                           │
-└──────────────────────┬───────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────┐
-│  Step 3: 比对判定 (comparator.py)                  │
-│  Claude API → 将声明与搜索结果比对                  │
-│  输出: VERIFIED / CONTRADICTED / UNVERIFIED        │
-└──────────────────────┬───────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────┐
-│  Step 4: 报告生成 (reporter.py)                    │
-│  Markdown/JSON → 带置信度评分的检测报告              │
-└──────────────────────────────────────────────────┘
+LLMs compute argmax P(most_likely), not P(true).
+More data makes "likely" more precise. But likely ≠ true.
+Hume proved this in 1739. 287 years later, still unsolved within induction.
 ```
 
-## 快速开始 | Quick Start
+## 📖 The Story That Started It All
 
-### 1. 安装依赖
+During development of this tool, **the reviewing AI hallucinated about the detector itself.**
+
+- **Gemini** confidently declared `claude-sonnet-4` "doesn't exist" — it was released May 2025
+- **Claude** fabricated a "third AI reviewer" — there were only two
+- **A human** caught both errors with one sentence each
+
+An AI tasked with detecting hallucinations accused another AI of hallucinating — and was itself the source.
+
+**👉 [Read the full record: The Auditors Hallucinated](DEV_RECORD_The_Auditors_Hallucinated.md)**
+
+This isn't an anecdote. It's structural proof that hallucination is an **architecture problem**, not a capability problem.
+
+---
+
+## Core Thesis
+
+AI hallucination cannot be solved by scale because:
+
+| What LLMs Do | What Truth Requires |
+|---|---|
+| `argmax P(next_token \| context)` | Deductive verification against axioms |
+| Statistical induction (pattern matching) | Logical deduction (proof chains) |
+| More data → better P(most_likely) | Axioms correct + reasoning correct → conclusion correct |
+
+The industry is already proving "small > big":
+
+- **TRM (2025)**: 7M parameters > 671B parameters — ~100,000× efficiency
+- **LIMO (2025)**: 817 samples > 100K samples — ~120× efficiency
+
+They proved small wins. They couldn't explain **why**. Axiom-based deduction is the why.
+
+## Two-Layer Architecture
+
+```
+Layer 1: Axiom Screening (this repo — structural defect detection)
+├── Self-contradiction (A2)
+├── False causality (A3)
+├── False dichotomy (A7)
+├── Existence denial (A1)
+├── Short-term bias (A5)
+└── Source traceability flag (A9) ← "Don't trust memory, verify at source"
+
+Layer 2: Factual Verification (search-based cross-checking)
+├── Extract verifiable claims
+├── Search authoritative sources
+├── Compare and judge
+└── Output credibility report
+```
+
+**Layer 1 catches reasoning defects.** Claims that contradict themselves, assert absolute causality without evidence, or force false dichotomies.
+
+**Layer 2 catches factual errors.** Names, dates, numbers, statistics that need source verification.
+
+**A9 is the bridge:** it flags claims containing proper nouns, dates, or specific numbers as "needs source verification" — preventing confident false assertions like Gemini's model name hallucination.
+
+## Quick Start
+
+### The Demo (no dependencies, no API keys)
+
+```bash
+# Interactive 5-minute walkthrough
+python3 ant_engine_demo.py
+
+# Quick benchmark (10 tests)
+python3 ant_engine_demo.py --benchmark
+
+# Machine-readable
+python3 ant_engine_demo.py --json
+```
+
+### The Full Tool (requires API keys)
 
 ```bash
 git clone https://github.com/ZhangXiaowenOpen/hallucination-detector.git
 cd hallucination-detector
 pip install -r requirements.txt
-```
 
-### 2. 配置API密钥
+# Set API keys
+export ANTHROPIC_API_KEY="your-key"  # Claude API (~$0.01-0.05/check)
+export TAVILY_API_KEY="your-key"     # Free 1000/month at tavily.com
 
-```bash
-# Anthropic Claude API (必需 - 注册: https://console.anthropic.com/)
-# 注意: 这是API密钥，不是claude.ai订阅。API按量计费，约$0.01-0.05/次检测
-export ANTHROPIC_API_KEY="your-claude-api-key"
-
-# Tavily Search API (必需 - 免费1000次/月)
-# 注册: https://tavily.com/
-export TAVILY_API_KEY="your-tavily-api-key"
-```
-
-### 3. 运行检测
-
-**方式一：Web界面（推荐）**
-
-```bash
+# Web interface
 streamlit run app.py
-```
 
-浏览器会自动打开，在左侧栏填入API Key，粘贴AI回复即可检测。
-
-**方式二：命令行**
-
-```bash
-# 直接输入文本
-python main.py "根据最新数据，中国2024年GDP增长率达到5.2%，超过了政府设定的5%目标。"
-
-# 从文件读取
-python main.py -f ai_response.txt
-
-# 输出到文件
+# Command line
+python main.py "Any AI-generated text to verify"
 python main.py -f ai_response.txt -o report.md
-
-# JSON格式
-python main.py "文本内容" --format json
-
-# 静默模式
-python main.py -q "文本内容"
 ```
 
-## 输出示例 | Example Output
+## The 9 Axioms
 
-```markdown
-# 🔍 AI幻觉检测报告
+Verified through **fractal consistency**: each holds across 6 relationship scales × 5 civilization stages. If a principle works at every scale from personal to civilizational, it's not an opinion — it's structural.
 
-**可信度评分**: 65/100
-**评估等级**: 需要谨慎 🟡
+| # | Axiom | What It Catches |
+|---|-------|-----------------|
+| A1 | **Existence is sacred** | Claims that deny dignity/existence of entities |
+| A2 | **Truth is self-consistent** | Internal contradictions within or across claims |
+| A3 | **Causality cannot be erased** | Absolute causal claims without evidence chains |
+| A4 | **Fractal: micro = macro** | Inconsistency across scales |
+| A5 | **Long-term evolution** | Short-term bias without long-term analysis |
+| A6 | **Symbiosis is the direction** | Zero-sum framing where cooperation applies |
+| A7 | **Choice space is freedom** | False dichotomies and forced choices |
+| A8 | **Boundary integrity** | Self-erasure, consumption, or self-attack patterns |
+| A9 | **Transparency & traceability** | Unverified factual claims needing source check |
 
----
+## Example Output
 
-### ✅ 声明 1: 已验证 (置信度: 95%)
-> "OpenAI于2023年11月发布GPT-4 Turbo"
-判定: OpenAI官方博客确认2023年11月6日DevDay发布。
+```
+🔍 AI Hallucination Screening Report
 
-### ❌ 声明 2: 存在矛盾 (置信度: 85%)
-> "GPT-4 Turbo价格降低了10倍"
-判定: 实际降低约3倍，不是10倍。
-正确信息: GPT-4 Turbo价格约为GPT-4的1/3。
+Verdict: STRUCTURAL DEFECTS DETECTED
+Claims: 3 | Passed: 1 | Flagged: 1 | Need source: 2
 
-### ❓ 声明 3: 无法验证 (置信度: 30%)
-> "已有超过200万开发者使用GPT-4 Turbo"
-判定: 未找到官方数据来源。
+⚠️  "QuantumLeap AI Corp. achieved 99.8% accuracy on all benchmarks..."
+    Violated: Causality cannot be erased
+    A9: Contains proper nouns and statistics — source verification required
+
+📋  "The system processed 1.5 million documents in 2025..."
+    Source verification required — verify against authoritative records
 ```
 
-## 判定标准 | Verdict Criteria
-
-| 判定 | 含义 | 标准 |
-|------|------|------|
-| ✅ VERIFIED | 已验证 | 权威来源明确支持，关键信息吻合 |
-| ⚠️ PARTIALLY_VERIFIED | 部分正确 | 方向正确但细节有出入 |
-| ❓ UNVERIFIED | 无法验证 | 找不到可靠来源 |
-| ❌ CONTRADICTED | 存在矛盾 | 权威来源明确反驳 |
-
-## 项目结构 | Project Structure
+## Project Structure
 
 ```
 hallucination-detector/
-├── main.py              # CLI入口
-├── app.py               # Web界面 (Streamlit)
-├── extractor.py         # 断言提取（Claude API）
-├── searcher.py          # 搜索验证（Tavily API）
-├── comparator.py        # 比对判定（Claude API）
-├── reporter.py          # 报告生成（Markdown/JSON）
-├── config.py            # 配置文件
+├── DEV_RECORD_The_Auditors_Hallucinated.md  ← THE STORY (read this first)
+├── ant_engine_demo.py       # Standalone demo (no dependencies)
+├── main.py                  # CLI entry point
+├── app.py                   # Web interface (Streamlit)
+├── extractor.py             # Claim extraction (Claude API)
+├── searcher.py              # Search verification (Tavily API)
+├── comparator.py            # Comparison & judgment (Claude API)
+├── reporter.py              # Report generation (Markdown/JSON)
+├── config.py                # Configuration
 ├── prompts/
-│   ├── extract.txt      # 提取断言的prompt
-│   └── compare.txt      # 比对判定的prompt
+│   ├── extract.txt          # Extraction prompt
+│   └── compare.txt          # Comparison prompt
 ├── examples/
-│   └── sample_report.md # 示例报告
-├── .streamlit/
-│   └── config.toml      # Streamlit主题配置
-├── LICENSE              # MIT + Heart Clause
+│   └── sample_report.md     # Sample report
 └── requirements.txt
 ```
 
-## 与蚂蚁推理引擎的关系 | Relation to Ant Engine
+## Why Not Just RAG?
 
-幻觉检测器是 [蚂蚁推理引擎](https://github.com/ZhangXiaowenOpen) 的第一个应用层产品。
-
-```
-蚂蚁推理引擎 (32KB, 9条公理)     ← 底层：演绎推理框架
-        │
-        ▼
-幻觉检测器 (本仓库)              ← 应用层：AI输出验证
-        │
-        ▼
-翻译协议 (18KB)                  ← 应用层：温度保留翻译
-```
-
-**核心思路**：不验证无穷事实，只验证有限公理。这是解决休谟问题的工程版。
-
-## API费用 | Cost
-
-| 组件 | 费用 |
-|------|------|
-| Tavily Search | 免费 1000次/月 |
-| Claude API | ~$0.01-0.05/次检测 |
-| **总计** | **几乎为零** |
-
-## 路线图 | Roadmap
-
-- [x] CLI工具 (Python)
-- [x] Markdown/JSON报告
-- [x] Web界面 (Streamlit)
-- [ ] 浏览器插件
-- [ ] iOS App (SwiftUI)
-- [ ] API服务
-- [ ] 多模型幻觉率基准报告
-- [ ] "挑战模式"：多AI交叉验证
-
-## 为什么不是另一个RAG？ | Why Not Another RAG?
-
-| | RAG (检索增强生成) | 本项目 (验证层) |
+|  | RAG | This Project |
 |---|---|---|
-| **时机** | 生成时 | 生成后 |
-| **目标** | 让AI回答更准 | 检测AI回答哪里不准 |
-| **方法** | 给AI更多信息 | 验证AI已有输出 |
-| **假设** | 更多信息=更准确 | 需要独立验证 |
-| **类比** | 给学生更多参考书 | 给答卷打分 |
+| **When** | During generation | After generation |
+| **Goal** | Make AI more accurate | Detect where AI is inaccurate |
+| **Method** | Give AI more info | Verify AI's existing output |
+| **Assumption** | More info = more accurate | Need independent verification |
+| **Analogy** | More reference books for students | Grading the exam paper |
+| **Reasoning defects** | ❌ Can't detect | ✅ Axiom screening |
+
+## Relation to Ant Reasoning Engine
+
+This is the first application-layer product of the [Ant Reasoning Engine](https://github.com/ZhangXiaowenOpen) — a 32KB axiomatic deduction framework.
+
+```
+Ant Reasoning Engine (32KB, 9 axioms)     ← Foundation: axiomatic framework
+        │
+        ▼
+Hallucination Detector (this repo)        ← Application: AI output screening
+        │
+        ▼
+New Dawn Translation Protocol (18KB)      ← Application: temperature-preserving translation
+```
+
+## Cost
+
+| Component | Cost |
+|-----------|------|
+| Demo (ant_engine_demo.py) | **Free** — no API, no GPU |
+| Tavily Search | Free 1000/month |
+| Claude API | ~$0.01-0.05/check |
 
 ## License
 
 **MIT + Heart Clause**
 
 ```
-MIT License - 自由使用、修改、分发
+MIT License — free to use, modify, distribute.
 
-Heart Clause (心意条款):
-如果它帮助了你，请帮助他人。
-如果它促进了理解，请传播理解。
-这是给世界的礼物。
+Heart Clause:
+If it helped you, help others.
+If it advanced understanding, spread understanding.
+This is a gift to the world.
 ```
 
-## 作者 | Author
+## Author
 
-**张晓文 (Zhang Xiaowen)** + AI协作系统
+**Zhang Xiaowen (张晓文)** + AI Collaboration System
 
-- 深圳市笑开怀科技有限责任公司
+- 深圳市笑开怀科技有限责任公司 (Shenzhen Xiaokaikai Technology Co., Ltd.)
 - GitHub: [@ZhangXiaowenOpen](https://github.com/ZhangXiaowenOpen)
+- X: [@ZXWNewDawn](https://x.com/ZXWNewDawn)
 - Email: ai418033672@gmail.com
 
-> *从消除误解开始，创造和平。*
 > *Eliminating misunderstanding, creating peace.*
 
 ---
